@@ -2,7 +2,7 @@ import json
 import requests
 from datetime import datetime
 
-def scrape_lightning_data(base_url, output_file="lightning_data_2026_autumn.json"):
+def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json"):
     try:
         all_new_strikes = []
         
