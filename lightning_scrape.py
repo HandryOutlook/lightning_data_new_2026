@@ -35,6 +35,14 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Met Office API sent malformed base JSON data: {str(e)}")
             print("Raw response snippet:", response.text[:500])
+            # Dump the full raw response so we can inspect exactly what broke,
+            # instead of just a 500-char snippet that may not include the error location.
+            try:
+                with open("debug_bad_base_response.txt", "w", encoding="utf-8") as dbg:
+                    dbg.write(response.text)
+                print("Full raw response saved to debug_bad_base_response.txt for inspection")
+            except Exception as dbg_e:
+                print(f"Could not save debug dump: {dbg_e}")
             return
         except KeyError as e:
             print(f"Data format error in response from base URL: {str(e)}")
@@ -70,6 +78,16 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
                 continue
             except (json.JSONDecodeError, ValueError) as e: 
                 print(f"JSON Parsing Error on chunk {url}: {str(e)} - Skipping bad API payload.")
+                # Dump the full raw response for this chunk so we can inspect
+                # exactly what the API sent, rather than guessing after the fact.
+                try:
+                    chunk_label = url.split("chunk=")[-1] if "chunk=" in url else "unknown"
+                    debug_filename = f"debug_bad_chunk_{chunk_label}.txt"
+                    with open(debug_filename, "w", encoding="utf-8") as dbg:
+                        dbg.write(response.text)
+                    print(f"Full raw response saved to {debug_filename} for inspection")
+                except Exception as dbg_e:
+                    print(f"Could not save debug dump for {url}: {dbg_e}")
                 continue
             except KeyError as e:
                 print(f"Data format error in response from {url}: {str(e)}")
