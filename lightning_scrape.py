@@ -1,5 +1,13 @@
 import json
 import requests
+import re
+
+def clean_json_text(raw_text):
+    """
+    Removes trailing commas before closing brackets and braces 
+    to fix malformed JSON strings.
+    """
+    return re.sub(r',\s*([\]}])', r'\1', raw_text)
 
 def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json"):
     try:
@@ -12,15 +20,19 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
             "Referer": "https://www.metoffice.gov.uk/"
         }
         
-        # 1. FETCH BASE URL (With complete error handling for malformed upstream JSON)
+        # 1. FETCH BASE URL
         try:
             response = requests.get(base_url, headers=headers)
             response.raise_for_status()
-            json_data = response.json() 
+            
+            # Sanitize the raw text before parsing
+            sanitized_text = clean_json_text(response.text)
+            json_data = json.loads(sanitized_text) 
+            
         except requests.exceptions.RequestException as e:
             print(f"Error fetching data from base URL {base_url}: {str(e)}")
             return
-        except (json.JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
+        except (json.JSONDecodeError, ValueError) as e:
             print(f"Met Office API sent malformed base JSON data: {str(e)}")
             print("Raw response snippet:", response.text[:500])
             return
@@ -31,7 +43,7 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         # Extract initial strikes
         base_strikes = json_data.get("lightning_strikes", [])
         all_new_strikes.extend(base_strikes)
-        print(f"Successfully fetched {len(base_strikes)} strikes from base URL {base_url}")
+        print(f"Successfully fetched {len(base_strikes)} strikes from base URL")
 
         # Extract chunks and generate chunk URLs
         chunks = json_data.get("chunks", [])
@@ -40,20 +52,23 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
             print("No chunks found in base URL response.")
 
         # 2. PROCESS PAGINATED CHUNKS
-      
         for url in chunk_urls:
             try:
                 response = requests.get(url, headers=headers)
                 response.raise_for_status()
-                json_data = response.json()
+                
+                # Sanitize the raw text before parsing
+                sanitized_text = clean_json_text(response.text)
+                json_data = json.loads(sanitized_text)
                 
                 new_strikes = json_data.get("lightning_strikes", [])
                 all_new_strikes.extend(new_strikes)
                 print(f"Successfully fetched {len(new_strikes)} strikes from {url}")
+                
             except requests.exceptions.RequestException as e:
                 print(f"Error fetching data from {url}: {str(e)}")
                 continue
-            except ValueError as e:  # <-- CATCHES ALL JSON/PARSER ERRORS UNIVERSALLY
+            except (json.JSONDecodeError, ValueError) as e: 
                 print(f"JSON Parsing Error on chunk {url}: {str(e)} - Skipping bad API payload.")
                 continue
             except KeyError as e:
@@ -68,7 +83,7 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         try:
             with open(output_file, 'r') as f:
                 existing_data = json.load(f)
-        except (FileNotFoundError, ValueError): # <-- UPDATED HERE TOO
+        except (FileNotFoundError, ValueError): 
             existing_data = {
                 "lightning_strikes": [],
                 "total_strikes": 0
