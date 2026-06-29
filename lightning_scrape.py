@@ -40,6 +40,7 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
             print("No chunks found in base URL response.")
 
         # 2. PROCESS PAGINATED CHUNKS
+      
         for url in chunk_urls:
             try:
                 response = requests.get(url, headers=headers)
@@ -52,8 +53,8 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
             except requests.exceptions.RequestException as e:
                 print(f"Error fetching data from {url}: {str(e)}")
                 continue
-            except (json.JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
-                print(f"JSON Parsing Error on chunk {url}: {str(e)} - Skipping chunk.")
+            except ValueError as e:  # <-- CATCHES ALL JSON/PARSER ERRORS UNIVERSALLY
+                print(f"JSON Parsing Error on chunk {url}: {str(e)} - Skipping bad API payload.")
                 continue
             except KeyError as e:
                 print(f"Data format error in response from {url}: {str(e)}")
@@ -67,7 +68,7 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         try:
             with open(output_file, 'r') as f:
                 existing_data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
+        except (FileNotFoundError, ValueError): # <-- UPDATED HERE TOO
             existing_data = {
                 "lightning_strikes": [],
                 "total_strikes": 0
