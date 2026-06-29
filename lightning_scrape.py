@@ -61,6 +61,18 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         if not all_new_strikes:
             print("No new strikes fetched from any URL.")
             return
+
+        # Load existing data if file exists and is valid
+        try:
+            with open(output_file, 'r') as f:
+                existing_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            # If the file doesn't exist OR is corrupted/malformed, recover gracefully
+            print(f"Warning: {output_file} missing or corrupt ({str(e)}). Initializing clean array.")
+            existing_data = {
+                "lightning_strikes": [],
+                "total_strikes": 0
+            }
         
         # Load existing data if file exists
         try:
