@@ -1,12 +1,10 @@
 import json
 import requests
-from datetime import datetime
 
 def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json"):
     try:
         all_new_strikes = []
         
-        # Spoof a standard browser header to bypass generic automated scraper blocks (403)
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "Accept": "application/json",
@@ -14,19 +12,23 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
             "Referer": "https://www.metoffice.gov.uk/"
         }
         
-        # Fetch the base URL to get chunks and strikes
+        # 1. FETCH BASE URL (With complete error handling for malformed upstream JSON)
         try:
             response = requests.get(base_url, headers=headers)
-            response.raise_for_status()  # Check for HTTP errors
-            json_data = response.json()  # Parse the JSON response
+            response.raise_for_status()
+            json_data = response.json() 
         except requests.exceptions.RequestException as e:
             print(f"Error fetching data from base URL {base_url}: {str(e)}")
+            return
+        except (json.JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
+            print(f"Met Office API sent malformed base JSON data: {str(e)}")
+            print("Raw response snippet:", response.text[:500])
             return
         except KeyError as e:
             print(f"Data format error in response from base URL: {str(e)}")
             return
 
-        # Extract strikes from base URL
+        # Extract initial strikes
         base_strikes = json_data.get("lightning_strikes", [])
         all_new_strikes.extend(base_strikes)
         print(f"Successfully fetched {len(base_strikes)} strikes from base URL {base_url}")
@@ -37,21 +39,20 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         if not chunks:
             print("No chunks found in base URL response.")
 
-        # Process each chunk URL
+        # 2. PROCESS PAGINATED CHUNKS
         for url in chunk_urls:
             try:
                 response = requests.get(url, headers=headers)
-                response.raise_for_status()  # Check for HTTP errors
-                json_data = response.json()  # Parse the JSON response
+                response.raise_for_status()
+                json_data = response.json()
                 
-                # Extract strikes from chunk data
                 new_strikes = json_data.get("lightning_strikes", [])
                 all_new_strikes.extend(new_strikes)
                 print(f"Successfully fetched {len(new_strikes)} strikes from {url}")
             except requests.exceptions.RequestException as e:
                 print(f"Error fetching data from {url}: {str(e)}")
                 continue
-            except json.JSONDecodeError as e:
+            except (json.JSONDecodeError, requests.exceptions.JSONDecodeError) as e:
                 print(f"JSON Parsing Error on chunk {url}: {str(e)} - Skipping chunk.")
                 continue
             except KeyError as e:
@@ -61,25 +62,12 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         if not all_new_strikes:
             print("No new strikes fetched from any URL.")
             return
-
-        # Load existing data if file exists and is valid
-        try:
-            with open(output_file, 'r') as f:
-                existing_data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            # If the file doesn't exist OR is corrupted/malformed, recover gracefully
-            print(f"Warning: {output_file} missing or corrupt ({str(e)}). Initializing clean array.")
-            existing_data = {
-                "lightning_strikes": [],
-                "total_strikes": 0
-            }
         
-        # Load existing data if file exists
+        # 3. LOAD OR INITIALIZE LOCAL FILE
         try:
             with open(output_file, 'r') as f:
                 existing_data = json.load(f)
-        except FileNotFoundError:
-            # If file doesn't exist, start with empty data
+        except (FileNotFoundError, json.JSONDecodeError):
             existing_data = {
                 "lightning_strikes": [],
                 "total_strikes": 0
@@ -87,8 +75,7 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         
         existing_strikes = existing_data.get("lightning_strikes", [])
         
-        # Optimized O(1) deduplication logic using a hash set
-        # Stores keys as tuple: (strike_time, lat, lon)
+        # Optimized O(1) deduplication
         seen_strikes = set()
         for s in existing_strikes:
             coords = s.get("coordinates", [0, 0])
@@ -103,39 +90,24 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
                 seen_strikes.add(strike_key)
                 unique_new_strikes.append(new_strike)
         
-        # Combine records
         updated_strikes = existing_strikes + unique_new_strikes
         total_strikes = len(updated_strikes)
         
-        # Print the results
-        print("\nNew Lightning Strikes Added:")
-        if unique_new_strikes:
-            for strike in unique_new_strikes:
-                strike_time = strike["strike_time"]
-                coords = strike["coordinates"]
-                print(f"Time: {strike_time}")
-                print(f"Coordinates: Latitude {coords[1]}, Longitude {coords[0]}")
-                print("---")
-        else:
-            print("No new strikes to add.")
+        print(f"\nTotal number of strikes to commit: {total_strikes}")
         
-        print(f"\nTotal number of strikes in file: {total_strikes}")
-        
-        # Prepare updated data package to write out
+        # 4. WRITE OUT CLEAN DATASET
         data_to_save = {
             "lightning_strikes": updated_strikes,
             "total_strikes": total_strikes
         }
         
-        # Save to JSON file
         with open(output_file, 'w') as f:
             json.dump(data_to_save, f, indent=4)
-        print(f"\nData updated in {output_file}")
+        print(f"Data successfully updated in {output_file}")
         
     except Exception as e:
-        print(f"Error occurred: {str(e)}")
+        print(f"Unexpected top-level error occurred: {str(e)}")
 
-# Base URL
 base_url = "https://data.consumer-digital.api.metoffice.gov.uk/v1/lightning"
 
 if __name__ == "__main__":
