@@ -9,14 +9,13 @@ jobs:
   scrape-and-update:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # Explicitly grant write access
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0  # CRITICAL: Fetches full history so we can rebase safely
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -31,27 +30,17 @@ jobs:
       - name: Run scrape script
         run: python lightning_scrape.py
 
-      - name: Commit, Sync, and Push
+      - name: Debug git configuration
         run: |
-          # 1. Set up Git identity
+          git remote -v
+          git config --list
+          echo "GITHUB_ACTOR: $GITHUB_ACTOR"
+          echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
+
+      - name: Commit and push if there are changes
+        run: |
           git config --local user.name "GitHub Action"
           git config --local user.email "action@github.com"
-          
-          # 2. Stage the newly scraped data
           git add lightning_data_2026_summer.json
-          
-          # 3. Check if there are changes to commit
-          if ! git diff --cached --quiet; then
-            
-            # 4. Commit the changes locally FIRST
-            git commit -m "Update lightning data - $(date -u)"
-            
-            # 5. Pull the changes that occurred on GitHub during the 1.5hr script run
-            git pull origin main --rebase
-            
-            # 6. Push the combined, up-to-date branch back to GitHub
-            git push origin main
-            
-          else
-            echo "No changes to commit"
-          fi
+          git commit -m "Update lightning data - $(date -u)" || echo "No changes to commit"
+          git push
