@@ -42,5 +42,6 @@ jobs:
           git config --local user.name "GitHub Action"
           git config --local user.email "action@github.com"
           git add lightning_data_2026_summer.json
+          git add debug_bad_*.txt 2>/dev/null || true
           git commit -m "Update lightning data - $(date -u)" || echo "No changes to commit"
           git push
