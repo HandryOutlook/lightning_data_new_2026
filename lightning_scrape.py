@@ -51,6 +51,9 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
             except requests.exceptions.RequestException as e:
                 print(f"Error fetching data from {url}: {str(e)}")
                 continue
+            except json.JSONDecodeError as e:
+                print(f"JSON Parsing Error on chunk {url}: {str(e)} - Skipping chunk.")
+                continue
             except KeyError as e:
                 print(f"Data format error in response from {url}: {str(e)}")
                 continue
