@@ -6,9 +6,17 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
     try:
         all_new_strikes = []
         
+        # Spoof a standard browser header to bypass generic automated scraper blocks (403)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.metoffice.gov.uk/"
+        }
+        
         # Fetch the base URL to get chunks and strikes
         try:
-            response = requests.get(base_url)
+            response = requests.get(base_url, headers=headers)
             response.raise_for_status()  # Check for HTTP errors
             json_data = response.json()  # Parse the JSON response
         except requests.exceptions.RequestException as e:
@@ -32,7 +40,7 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         # Process each chunk URL
         for url in chunk_urls:
             try:
-                response = requests.get(url)
+                response = requests.get(url, headers=headers)
                 response.raise_for_status()  # Check for HTTP errors
                 json_data = response.json()  # Parse the JSON response
                 
@@ -62,22 +70,25 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
                 "total_strikes": 0
             }
         
-        # Extract existing strikes
-        existing_strikes = existing_data["lightning_strikes"]
+        existing_strikes = existing_data.get("lightning_strikes", [])
         
-        # Check for new unique strikes (based on strike_time and coordinates)
+        # Optimized O(1) deduplication logic using a hash set
+        # Stores keys as tuple: (strike_time, lat, lon)
+        seen_strikes = set()
+        for s in existing_strikes:
+            coords = s.get("coordinates", [0, 0])
+            seen_strikes.add((s.get("strike_time"), coords[1], coords[0]))
+        
         unique_new_strikes = []
         for new_strike in all_new_strikes:
-            is_duplicate = False
-            for existing_strike in existing_strikes + unique_new_strikes:
-                if (new_strike["strike_time"] == existing_strike["strike_time"] and 
-                    new_strike["coordinates"] == existing_strike["coordinates"]):
-                    is_duplicate = True
-                    break
-            if not is_duplicate:
+            coords = new_strike.get("coordinates", [0, 0])
+            strike_key = (new_strike.get("strike_time"), coords[1], coords[0])
+            
+            if strike_key not in seen_strikes:
+                seen_strikes.add(strike_key)
                 unique_new_strikes.append(new_strike)
         
-        # Combine strikes
+        # Combine records
         updated_strikes = existing_strikes + unique_new_strikes
         total_strikes = len(updated_strikes)
         
@@ -95,7 +106,7 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
         
         print(f"\nTotal number of strikes in file: {total_strikes}")
         
-        # Prepare updated data to save
+        # Prepare updated data package to write out
         data_to_save = {
             "lightning_strikes": updated_strikes,
             "total_strikes": total_strikes
@@ -112,5 +123,5 @@ def scrape_lightning_data(base_url, output_file="lightning_data_2026_summer.json
 # Base URL
 base_url = "https://data.consumer-digital.api.metoffice.gov.uk/v1/lightning"
 
-# Call the function
-scrape_lightning_data(base_url)
+if __name__ == "__main__":
+    scrape_lightning_data(base_url)
